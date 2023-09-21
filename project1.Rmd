@@ -1,0 +1,127 @@
+---
+title: "Project 1"
+author: "Kelly Eng"
+date: "2023-09-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-tidyverse}
+library(tidyverse)
+```
+
+Read the file and store the data
+```{r read-file}
+file <- readLines("tournamentinfo.txt")
+
+# RStudio gives me a warning about an incomplete final line & I didn't want to modify the given file. Opening the text file in RStudio shows a count of 196 lines. Trying to get the number of rows kept giving me NULL.
+
+# First player is on line 5, then the rest of the players are on every third line after
+# The game results are also on the same row
+
+player_rows <- file[seq(5, 196, 3)]
+#It's 64 chess players, the correct number
+player_rows
+
+
+# The first time a player's state shows up is on line 6
+rating_rows <- file[seq(6, 196, 3)]
+# The ratings of all 64 players are all there
+length(rating_rows)
+```
+The Regex Part
+```{r regex}
+# Credit to ChatGPT for help with regex, I did the parts that did not involve regular expressions on my own
+
+player_names <- trimws(gsub("\\d+ \\|\\s+([A-Z ]+)\\s+\\|.*", "\\1", player_rows))
+print(player_names)
+
+# Extract total points as numeric values
+total_points <- as.numeric(stringr::str_extract(player_rows, "\\d+\\.\\d+"))
+print(total_points)
+length(total_points)
+
+state <- trimws(gsub("^(\\s*)([A-Z]+)\\s*\\|.*", "\\2", rating_rows))
+print(state)
+#There's 64 states, one for each player, the output is 64
+length(state)
+
+pre_rating <- as.integer(str_extract(str_extract(rating_rows, "[^\\d]\\d{3,4}[^\\d]"), "\\d+"))
+pre_rating
+
+# Create a vector to store opponents for each player
+opponents <- vector("list", length(player_rows))
+
+# Function to extract opponents from a line
+extract_opponents <- function(line) {
+  opponent_pattern <- "\\b(W|L|D) +(\\d+)\\b"
+  opponent_matches <- gregexpr(opponent_pattern, line)
+  opponent_indices <- regmatches(line, opponent_matches)
+  extracted_opponents <- numeric()
+  for (indices in opponent_indices) {
+    opponent <- as.numeric(sub(opponent_pattern, "\\2", indices))
+    extracted_opponents <- c(extracted_opponents, opponent)
+  }
+  return(extracted_opponents)
+}
+
+# Loop through player data and extract opponents
+for (i in 1:length(player_rows)) {
+  player_opponents <- extract_opponents(player_rows[i])
+  opponents[[i]] <- player_opponents
+}
+
+# This part is done by me because it doesn't involve regex
+
+calc_avg_rating <- function(players) {
+  total <- 0
+  num_of_opponents <- length(players)
+  for (i in 1:num_of_opponents) {
+    opponent_num <- players[i]
+    opponent_rating <- pre_rating[opponent_num]
+    total <- total + opponent_rating
+  }
+  rounded_avg <- round(total/num_of_opponents)
+  return(rounded_avg)
+}
+
+average_opponent_ratings <- c()
+
+for (i in 1:64) {
+  average_opponent_ratings[i] <- calc_avg_rating(opponents[[i]])
+}
+```
+Creating the Data Frame
+```{r create-data-frame}
+chess_players <- data.frame(player_names, state, total_points, pre_rating, average_opponent_ratings)
+
+# Get the average pre_rating for every player
+print(mean(chess_players$pre_rating))
+
+#Get the median pre_rating
+print(median(chess_players$pre_rating))
+
+# Plot the pre_ratings of each player per state
+chess_players %>%
+  ggplot(aes(x = state, y = pre_rating)) + geom_point()
+
+head(chess_players)
+```
+
+Renaming and Generating the CSV File
+```{r generate-csv-file}
+
+# Renaming the columns
+names(chess_players) <- c("Player's Name", "Player's State", "Total Number of Points", "Player's Pre-Rating", "Average Pre Chess Rating Of Opponents")
+
+write.csv(chess_players, "chess_stats.csv", row.names = FALSE)
+```
+
+Viewing the CSV File
+```{r view-generated-file}
+chess_data <- read.csv("chess_stats.csv")
+View(chess_data)
+```
